@@ -15,6 +15,18 @@ MAX_ENEMY_BULLETS = 5
 
 DEATH_PAUSE_TIME = 0.85
 
+# Level scaling: each cleared level makes the next one harder.
+LEVEL_CLEAR_TIME = 2.0          # seconds of the "LEVEL CLEAR" banner
+ENEMY_SPEED_GROWTH = 0.2        # +20% enemy speed per level
+BULLET_SPEED_GROWTH = 1         # +1 px/frame enemy bullet speed per level
+MAX_BULLET_SPEED = 8
+FIRE_CHANCE_BASE = 30           # base of the per-frame fire roll
+FIRE_CHANCE_GROWTH = 2          # -2 (more likely to fire) per level
+MIN_FIRE_CHANCE = 10
+
+# A live enemy whose bottom edge drops to this y = game over (classic rule).
+ENEMY_BOTTOM_LIMIT = 110
+
 # This margin controls how close the enemy gets to the left or right side
 # before reversing direction.
 ENEMY_HORIZONTAL_MARGIN = 15

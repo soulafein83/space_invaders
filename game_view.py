@@ -76,7 +76,13 @@ class GameView(arcade.View):
 
         # arcade.configure_logging()
 
-    def setup_level_one(self):
+    def setup_level(self):
+        # Build the formation for the current level and apply the
+        # level-scaled speeds (each cleared level makes the next harder).
+        self.enemy_change_x = -ENEMY_SPEED * (1 + ENEMY_SPEED_GROWTH * (self.level - 1))
+        self.enemy_bullet_speed = min(
+            BULLET_SPEED + BULLET_SPEED_GROWTH * (self.level - 1), MAX_BULLET_SPEED)
+
         # Load the textures for the enemies, one facing left, one right
         # Create rows and columns of enemies
         column_count = 10
@@ -157,6 +163,9 @@ class GameView(arcade.View):
 
         # Set up the player
         self.score = 0
+        self.level = 1
+        self.level_pause = 0
+        self.enemy_bullet_speed = BULLET_SPEED
 
         # Image from kenney.nl
         self.player_sprite = arcade.Sprite("images/player.png",
@@ -170,7 +179,7 @@ class GameView(arcade.View):
         for x in range(140, 1200, 270):
             self.make_shield(x)
 
-        self.setup_level_one()
+        self.setup_level()
 
     def draw(self):
         # Draw all the sprites.
@@ -189,6 +198,14 @@ class GameView(arcade.View):
                          font_name="Kenney Rocket")
 
         # Render the text
+        arcade.draw_text(f"Level: {self.level}",
+                         x=SCREEN_WIDTH / 2,
+                         y=SCREEN_HEIGHT - 35,
+                         color=arcade.color.WHITE,
+                         font_size=24,
+                         anchor_x="center",
+                         font_name="Kenney Rocket")
+
         arcade.draw_text(f"Lives: {self.lives}",
                          x=SCREEN_WIDTH - 300,
                          y=SCREEN_HEIGHT - 35,
@@ -197,6 +214,16 @@ class GameView(arcade.View):
                          align="right",
                          width=300,
                          font_name="Kenney Rocket")
+
+        # Draw the level-clear banner while the pause is running
+        if self.level_pause > 0:
+            arcade.draw_text(text=f"LEVEL {self.level} CLEAR",
+                             x=SCREEN_WIDTH / 2,
+                             y=SCREEN_HEIGHT / 2 + 20,
+                             color=arcade.color.WHITE,
+                             font_size=50,
+                             anchor_x="center",
+                             font_name="Kenney Rocket")
 
         # Draw game over if the game state is such
         if self.game_state == GAME_OVER:
@@ -265,8 +292,8 @@ class GameView(arcade.View):
     def on_mouse_motion(self, x, y, dx, dy):
         """ Called whenever the mouse moves. """
 
-        # Don't move the player if the game is over
-        if self.game_state == GAME_OVER:
+        # Don't move the player if the game is over or a level is clearing
+        if self.game_state == GAME_OVER or self.level_pause > 0:
             return
 
         # Convert screen pixels to world coordinates (the camera may be
@@ -288,8 +315,8 @@ class GameView(arcade.View):
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
-        # Don't let the player fire once the game is over
-        if self.game_state == GAME_OVER:
+        # Don't let the player fire once the game is over or a level is clearing
+        if self.game_state == GAME_OVER or self.level_pause > 0:
             return
 
         if self.death_pause:
@@ -350,6 +377,16 @@ class GameView(arcade.View):
                 # Move enemy down
                 enemy.center_y -= ENEMY_MOVE_DOWN_AMOUNT
 
+        # Classic rule: if any live enemy drops to the bottom line,
+        # the player loses.
+        for enemy in self.enemy_list:
+            if enemy.dead:
+                continue
+            if enemy.bottom <= ENEMY_BOTTOM_LIMIT:
+                self.game_state = GAME_OVER
+                arcade.play_sound(self.game_over)
+                return
+
     def allow_enemies_to_fire(self):
         """
         See if any enemies will fire this frame.
@@ -373,10 +410,13 @@ class GameView(arcade.View):
         if not lowest_by_x or len(self.enemy_bullet_list) >= MAX_ENEMY_BULLETS:
             return
 
-        # Adjust the chance depending on the number of live enemies.
-        # Fewer enemies, more likely to fire. Dead enemies stay in the
-        # list for 0.5 s, so counting the list would be wrong.
-        chance = 30 + sum(1 for enemy in self.enemy_list if not enemy.dead)
+        # Adjust the chance depending on the level (harder each level) and
+        # the number of live enemies. Fewer enemies, more likely to fire.
+        # Dead enemies stay in the list for 0.5 s, so counting the list
+        # would be wrong.
+        chance = max(MIN_FIRE_CHANCE,
+                     FIRE_CHANCE_BASE - FIRE_CHANCE_GROWTH * (self.level - 1))
+        chance += sum(1 for enemy in self.enemy_list if not enemy.dead)
 
         # One global roll per frame; on a hit, a random column fires
         # (lowest_by_x holds exactly the lowest live enemy per column).
@@ -386,8 +426,8 @@ class GameView(arcade.View):
             # Create a bullet
             bullet = EnemyBullet()
 
-            # Give the bullet a speed
-            bullet.change_y = -BULLET_SPEED
+            # Give the bullet a speed (level-scaled, see setup_level)
+            bullet.change_y = -self.enemy_bullet_speed
 
             # Position the bullet so its top id right below the enemy
             bullet.center_x = enemy.center_x
@@ -487,13 +527,26 @@ class GameView(arcade.View):
         if self.game_state == GAME_OVER:
             return
 
+        if self.level_pause > 0:
+            # "LEVEL CLEAR" banner is up; freeze the game and build the
+            # next, harder level when the banner ends.
+            self.level_pause -= delta_time
+            if self.level_pause < 0:
+                self.level_pause = 0
+                self.level += 1
+                self.setup_level()
+            return
+
         self.update_enemies()
         self.allow_enemies_to_fire()
         self.process_enemy_bullets()
         self.process_player_bullets()
 
         if len(self.enemy_list) == 0:
-            self.setup_level_one()
+            # Formation wiped out: clear leftover player bullets and
+            # show the level-clear banner.
+            self.player_bullet_list.clear()
+            self.level_pause = LEVEL_CLEAR_TIME
 
     def on_key_press(self, symbol: int, modifiers: int):
         if self.game_state == GAME_OVER and symbol == arcade.key.SPACE:
