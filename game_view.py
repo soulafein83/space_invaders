@@ -9,6 +9,8 @@ from enemy_bullet import EnemyBullet
 from constants import *
 from enemy_invader import EnemyInvader
 import instruction_view
+from power_up import PowerUp
+from ufo import UFO
 
 
 class GameView(arcade.View):
@@ -72,6 +74,12 @@ class GameView(arcade.View):
         self.hit_sound = arcade.load_sound(":resources:sounds/hit5.wav")
         self.player_explosion = arcade.load_sound(":resources:sounds/explosion1.wav")
         self.game_over = arcade.load_sound(":resources:sounds/gameover4.wav")
+        # UFO (mystery ship) and power-ups
+        self.ufo_sound = arcade.load_sound(":resources:sounds/secret2.wav")
+        self.ufo_explosion = arcade.load_sound(":resources:sounds/explosion2.wav")
+        self.power_up_sound = arcade.load_sound(":resources:sounds/upgrade1.wav")
+        self.life_sound = arcade.load_sound(":resources:sounds/coin1.wav")
+        self.shield_break_sound = arcade.load_sound(":resources:sounds/rockHit2.wav")
 
         arcade.set_background_color(arcade.color.BLACK)
 
@@ -178,6 +186,18 @@ class GameView(arcade.View):
         self.key_left = False
         self.key_right = False
 
+        # UFO (mystery ship) state, reset every run.
+        self.ufo = None
+        self.ufo_timer = random.uniform(UFO_SPAWN_MIN, UFO_SPAWN_MAX)
+
+        # Falling power-ups and the player's active effects, reset every run.
+        self.power_up_list = arcade.SpriteList()
+        self.shoot_cooldown = 0
+        self.double_timer = 0
+        self.rapid_timer = 0
+        self.slow_timer = 0
+        self.shield_charges = 0
+
         # Image from kenney.nl
         self.player_sprite = arcade.Sprite("images/player.png",
                                            SPRITE_SCALING_PLAYER)
@@ -204,6 +224,11 @@ class GameView(arcade.View):
     def draw(self):
         # Draw all the sprites.
         self.enemy_list.draw(pixelated=True)
+        # A single sprite has no .draw() in arcade 3.x — use draw_sprite
+        # (it renders at the sprite's position with its scaled size).
+        if self.ufo is not None:
+            arcade.draw_sprite(self.ufo, pixelated=True)
+        self.power_up_list.draw(pixelated=True)
         self.player_bullet_list.draw(pixelated=True)
         self.enemy_bullet_list.draw(pixelated=True)
         self.shield_list.draw(pixelated=True)
@@ -224,6 +249,24 @@ class GameView(arcade.View):
                          color=arcade.color.WHITE,
                          font_size=24,
                          font_name="Kenney Rocket")
+
+        # Show the active power-up effects, if any.
+        active_effects = []
+        if self.double_timer > 0:
+            active_effects.append("DOUBLE")
+        if self.rapid_timer > 0:
+            active_effects.append("RAPID")
+        if self.shield_charges > 0:
+            active_effects.append("SHIELD")
+        if self.slow_timer > 0:
+            active_effects.append("SLOW")
+        if active_effects:
+            arcade.draw_text("  ".join(active_effects),
+                             x=30,
+                             y=SCREEN_HEIGHT - 95,
+                             color=arcade.color.WHITE,
+                             font_size=20,
+                             font_name="Kenney Rocket")
 
         # Render the text
         arcade.draw_text(f"Level: {self.level}",
@@ -380,13 +423,28 @@ class GameView(arcade.View):
         if self.death_pause:
             return
 
-        # Only allow the user so many bullets on screen at a time to prevent
-        # them from spamming bullets.
-        if len(self.player_bullet_list) < MAX_PLAYER_BULLETS:
+        # Fire-rate cooldown (shortened by the rapid power-up).
+        if self.shoot_cooldown > 0:
+            return
 
-            # Gunshot sound
-            arcade.play_sound(self.gun_sound)
+        # Only allow the user so many bullets on screen at once to prevent
+        # them from spamming bullets. The double power-up allows two extra
+        # bullets (it fires a pair at once).
+        max_bullets = MAX_PLAYER_BULLETS + (2 if self.double_timer > 0 else 0)
+        if len(self.player_bullet_list) >= max_bullets:
+            return
 
+        self.shoot_cooldown = (RAPID_SHOOT_COOLDOWN if self.rapid_timer > 0
+                               else PLAYER_SHOOT_COOLDOWN)
+
+        # The double power-up fires two bullets, offset left and right.
+        offsets = (-DOUBLE_BULLET_OFFSET, DOUBLE_BULLET_OFFSET) \
+            if self.double_timer > 0 else (0,)
+
+        # Gunshot sound
+        arcade.play_sound(self.gun_sound)
+
+        for offset in offsets:
             # Create a bullet
             bullet = arcade.Sprite("images/player_bullet.png", SPRITE_SCALING_LASER)
             bullet.color = PLAYER_COLOR
@@ -395,7 +453,7 @@ class GameView(arcade.View):
             bullet.change_y = PLAYER_BULLET_SPEED
 
             # Position the bullet
-            bullet.center_x = self.player_sprite.center_x
+            bullet.center_x = self.player_sprite.center_x + offset
             bullet.bottom = self.player_sprite.top
 
             # Add the bullet to the appropriate lists
@@ -423,7 +481,9 @@ class GameView(arcade.View):
             # Dead enemies (explosions) stay in place while they fade out.
             if enemy.dead:
                 continue
-            enemy.center_x += self.enemy_change_x
+            # The "slow" power-up halves the enemy speed.
+            speed = self.enemy_change_x * (SLOW_FACTOR if self.slow_timer > 0 else 1.0)
+            enemy.center_x += speed
 
         # Check every enemy to see if any hit the edge. If so, reverse the
         # direction and flag to move down.
@@ -527,6 +587,13 @@ class GameView(arcade.View):
 
             # See if the player got hit with a bullet
             if arcade.check_for_collision(self.player_sprite, bullet):
+                # A one-shot shield absorbs the bullet instead of a life.
+                if self.shield_charges > 0:
+                    self.shield_charges -= 1
+                    arcade.play_sound(self.shield_break_sound)
+                    bullet.remove_from_sprite_lists()
+                    continue
+
                 if self.lives > 0:
                     arcade.play_sound(self.player_explosion)
                     self.lives -= 1
@@ -563,6 +630,9 @@ class GameView(arcade.View):
             # Check this bullet to see if it hit a enemy
             hit_list = arcade.check_for_collision_with_list(bullet, self.enemy_list)
 
+            # "spent" marks a bullet that already did its one kill, so the
+            # UFO check below never gives a second kill to one bullet.
+            spent = False
             # A bullet kills only the first enemy it hits (original
             # behavior). Dead enemies (explosions) are skipped, and the
             # loop exits right after the first live kill.
@@ -574,15 +644,112 @@ class GameView(arcade.View):
 
                 self.score += enemy.score
 
+                # A killed enemy may drop a power-up that falls toward the
+                # player (extra.md pkt 4).
+                if random.randrange(100) < POWER_UP_CHANCE:
+                    power_up = PowerUp(random.choice(POWER_UP_TYPES),
+                                       enemy.center_x, enemy.bottom)
+                    self.power_up_list.append(power_up)
+
                 # Hit Sound
                 arcade.play_sound(self.hit_sound)
 
                 # One bullet = one kill; don't score the rest of hit_list.
+                spent = True
                 break
+
+            # The mystery ship (extra.md pkt 3): only a bullet that is
+            # still alive can hit it.
+            if not spent and self.ufo is not None:
+                if arcade.check_for_collision(bullet, self.ufo):
+                    self.score += self.ufo.score
+                    arcade.play_sound(self.ufo_explosion)
+                    bullet.remove_from_sprite_lists()
+                    self.ufo = None
+                    self.ufo_timer = random.uniform(UFO_SPAWN_MIN, UFO_SPAWN_MAX)
+                    continue
 
             # If the bullet flies off-screen, remove it.
             if bullet.bottom > SCREEN_HEIGHT:
                 bullet.remove_from_sprite_lists()
+
+    def spawn_ufo(self):
+        """ Create the mystery ship just outside a random screen edge. """
+        ufo = UFO()
+        ufo.score = random.choice(UFO_SCORES)
+        ufo.center_y = UFO_Y
+        if random.choice((-1, 1)) < 0:
+            # Flying to the right, start off the left edge.
+            ufo.center_x = -ufo.width / 2
+            ufo.change_x = UFO_SPEED
+        else:
+            # Flying to the left, start off the right edge.
+            ufo.center_x = SCREEN_WIDTH + ufo.width / 2
+            ufo.change_x = -UFO_SPEED
+        arcade.play_sound(self.ufo_sound)
+        self.ufo = ufo
+
+    def process_ufo(self, delta_time):
+        """ Spawn, move and despawn the mystery ship. """
+        self.ufo_timer -= delta_time
+        if self.ufo is None:
+            if self.ufo_timer <= 0:
+                self.spawn_ufo()
+                self.ufo_timer = random.uniform(UFO_SPAWN_MIN, UFO_SPAWN_MAX)
+            return
+
+        self.ufo.update(delta_time)
+
+        # The ship is done once it has fully crossed the screen.
+        if self.ufo.right < 0 or self.ufo.left > SCREEN_WIDTH:
+            self.ufo = None
+            self.ufo_timer = random.uniform(UFO_SPAWN_MIN, UFO_SPAWN_MAX)
+
+    def process_power_ups(self, delta_time):
+        """ Let power-ups fall; activate one when the player touches it. """
+        self.power_up_list.update(delta_time)
+
+        for power_up in self.power_up_list:
+            # Touching the power-up activates it.
+            if arcade.check_for_collision(self.player_sprite, power_up):
+                self.activate_power_up(power_up)
+                power_up.remove_from_sprite_lists()
+                continue
+
+            # Missed power-ups fall off the bottom of the screen.
+            if power_up.bottom < 0:
+                power_up.remove_from_sprite_lists()
+
+    def activate_power_up(self, power_up):
+        """ Apply the picked-up power-up to the player. """
+        kind = power_up.power_type
+        if kind == "double":
+            self.double_timer = POWER_UP_DURATION
+            arcade.play_sound(self.power_up_sound)
+        elif kind == "rapid":
+            self.rapid_timer = POWER_UP_DURATION
+            arcade.play_sound(self.power_up_sound)
+        elif kind == "slow":
+            self.slow_timer = POWER_UP_DURATION
+            arcade.play_sound(self.power_up_sound)
+        elif kind == "life":
+            self.lives += 1
+            arcade.play_sound(self.life_sound)
+        else:
+            # Shield: one enemy bullet can be absorbed without losing a life.
+            self.shield_charges += 1
+            arcade.play_sound(self.power_up_sound)
+
+    def tick_player_effects(self, delta_time):
+        """ Count down the fire cooldown and the timed power-ups. """
+        if self.shoot_cooldown > 0:
+            self.shoot_cooldown = max(0.0, self.shoot_cooldown - delta_time)
+        if self.double_timer > 0:
+            self.double_timer = max(0.0, self.double_timer - delta_time)
+        if self.rapid_timer > 0:
+            self.rapid_timer = max(0.0, self.rapid_timer - delta_time)
+        if self.slow_timer > 0:
+            self.slow_timer = max(0.0, self.slow_timer - delta_time)
 
     def on_update(self, delta_time):
         """ Movement and game logic """
@@ -617,11 +784,15 @@ class GameView(arcade.View):
         self.allow_enemies_to_fire()
         self.process_enemy_bullets()
         self.process_player_bullets()
+        self.process_ufo(delta_time)
+        self.process_power_ups(delta_time)
+        self.tick_player_effects(delta_time)
 
         if len(self.enemy_list) == 0:
             # Formation wiped out: clear leftover player bullets and
-            # show the level-clear banner.
+            # falling power-ups, then show the level-clear banner.
             self.player_bullet_list.clear()
+            self.power_up_list.clear()
             self.level_pause = LEVEL_CLEAR_TIME
 
     def on_key_press(self, symbol: int, modifiers: int):

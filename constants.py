@@ -30,6 +30,32 @@ MIN_FIRE_CHANCE = 10
 # A live enemy whose bottom edge drops to this y = game over (classic rule).
 ENEMY_BOTTOM_LIMIT = 110
 
+# Mystery ship (UFO): crosses the top of the formation once in a while.
+UFO_SPEED = 3                  # px/frame while crossing the screen
+UFO_Y = 640                    # flight altitude (above the enemy rows)
+UFO_SPAWN_MIN = 20             # seconds until the next UFO can appear
+UFO_SPAWN_MAX = 35
+UFO_SCORES = (50, 100, 150, 300)
+
+# Power-ups: killed enemies may drop one; it falls down and is
+# activated when the player touches it.
+POWER_UP_CHANCE = 10           # % chance a kill drops a power-up
+POWER_UP_SIZE = 18             # texture size in px
+POWER_UP_FALL_SPEED = 3        # px/frame while falling
+POWER_UP_DURATION = 10         # seconds for timed effects (double/rapid/slow)
+POWER_UP_TYPES = ("double", "rapid", "life", "shield", "slow")
+POWER_UP_COLORS = {
+    "double": (255, 165, 0),    # orange
+    "rapid": (255, 255, 0),     # yellow
+    "life": (255, 0, 0),        # red
+    "shield": (0, 120, 255),    # blue
+    "slow": (160, 32, 240),     # purple
+}
+PLAYER_SHOOT_COOLDOWN = 0.4    # seconds between player shots (base)
+RAPID_SHOOT_COOLDOWN = 0.15    # cooldown while the rapid power-up is active
+SLOW_FACTOR = 0.5              # enemy speed multiplier while "slow" is active
+DOUBLE_BULLET_OFFSET = 12      # px left/right offset of the twin bullets
+
 # This margin controls how close the enemy gets to the left or right side
 # before reversing direction.
 ENEMY_HORIZONTAL_MARGIN = 15
