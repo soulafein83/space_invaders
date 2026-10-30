@@ -197,6 +197,71 @@ instrukcję: `pip install arcade` → `python main.py`.
 
 ---
 
+## 🎯 Zadanie bojowe — przegląd kodu vs arcade 3.3.3 (przegląd, nie crash)
+
+Przegląd oparły na **rzeczywistej zinstaloowanej bibliotiece** (arcade 3.3.3,
+pyglet 2.1.19) — inspekcja sygnatur i źrół, nie zgadowanie. Poprawione wcześniej
+(`set_viewport`, `start_render`, `draw_text x/y`, `SpriteList(is_static=...)`)
+są OK.
+
+### 1. Tekst `GAME OVER` poza ekranem  ✅ NAPRAWIONE
+**Plik / linie:** `game_view.py` – linie 193–209 (`draw()`)
+```python
+arcade.draw_text(text="GAME OVER", x=0, ..., width=SCREEN_WIDTH, align="center", ...)
+arcade.draw_text(text="Press Space", x=0, ..., width=SCREEN_WIDTH, align="center", ...)
+```
+`align="center"` centruje tekst **w punkcie `x`**. Przy `x=0` środek bloku
+tekstu (szerokość 1200 px) jest w `x=0` → tekst rozciąga się od `x=-600` do
+`x=+600` → **połowa poza ekranem (po lewej)**. Wyjawa dopiero po przegranej.
+
+**Poprawka (zazonowana):** `x=0` → `x=SCREEN_WIDTH/2` (wyśrorowanie na środku).
+
+### 2. Eksplozja wrogów „pobrudzona" kolorem  ✅ NAPRAWIONE
+**Plik / linie:** `enemy_invader.py` – linia 34 (`explode()`)
+```python
+self.color = ENEMY_EXPLOSION_COLOR   # (128, 0, 0) → tintuje eksplozję ciemnoczerwienią
+```
+Ustawnie `.color` na (128,0,0) tintuje teksturę eksplozji. Oryginalny tutorial
+tego nie robi.
+
+**Poprawka (zazonowana):** usunięcie linii `.color = ...`. Jednocześnie usunięto
+nieużytą stałą `ENEMY_EXPLOSION_COLOR` z `constants.py`.
+
+### 3. Ruch px/klatkę (delta_time × 60) — konwenca, NIE błąd  ⏭️ ZOSTAWIONO
+**Plik:** `game_view.py` (ruch kul przez `change_y` / `Sprite.update()`)
+
+W arcade 3.3.3 `Sprite.update()` mnoży `delta_time` przez 60, więc
+`change_x`/`change_y` to **piksele na klatkę**. To konwenca arcade (oryginalny
+tutorial tak ma) → gra jest uzależniona od liczby klatek (60 Hz vs 144 Hz).
+**Nie jest to crash ani błąd.** Użytkownik zdecydował, że zostawia (konwenca).
+
+### 4. Strzelanie po przegranej  ✅ NAPRAWIONE
+**Plik / linie:** `game_view.py` – `on_mouse_press` (linia ~247)
+```python
+if self.death_pause:
+    return
+```
+Sprawdzana jest tylko `death_pause`, a **nie** `game_state`. Po `GAME_OVER`
+kliknięcie nadal dodawał kul (nieruszających się, bo `update` zwraca się
+wcześnie) — bezskuteczne, ale „wycieka".
+
+**Poprawka (zazonowana):** dodano `if self.game_state == GAME_OVER: return`
+na początku metody.
+
+### 5. Dedup kolumn strzelania przez float  ✅ NAPRAWIONE
+**Plik / linie:** `game_view.py` – `allow_enemies_to_fire` (linie ~318, ~334)
+```python
+if random.randrange(chance) == 0 and enemy.center_x not in x_spawn:
+    ...
+x_spawn.append(enemy.center_x)
+```
+Porównywanie `float` przez `in`/`==` jest kruche.
+
+**Poprawka (zazonowana):** `enemy.center_x` → `round(enemy.center_x, 1)` przy
+porównywaniu i zapisywaniu.
+
+---
+
 ## Podsumowanie – co naprawić w pierwszej kolejności
 
 Wszystkie punkty (1–12) są teraz **naprawione i wypuszczone na forka**.

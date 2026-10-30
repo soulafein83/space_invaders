@@ -32,4 +32,3 @@ class EnemyInvader(arcade.Sprite):
         self.texture = arcade.load_texture("images/enemy_explosion.png")
         self.dead = True
         self.time = 0
-        self.color = ENEMY_EXPLOSION_COLOR

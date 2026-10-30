@@ -1,6 +1,8 @@
 import random
 import arcade
 from pyglet.math import Vec2
+from arcade.camera import Camera2D
+from arcade.types import Viewport
 
 from enemy_bullet import EnemyBullet
 from constants import *
@@ -55,6 +57,14 @@ class GameView(arcade.View):
 
         # Don't show the mouse cursor
         self.window.set_mouse_visible(False)
+
+        # 2D camera used for fit-to-screen scaling (keeps the aspect ratio).
+        self.camera = Camera2D(
+            window=self.window,
+            viewport=Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT),
+            position=Vec2(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2),
+            zoom=1.0,
+        )
 
         # Load sounds. Sounds from kenney.nl
         self.gun_sound = arcade.load_sound(":resources:sounds/hurt5.wav")
@@ -143,7 +153,7 @@ class GameView(arcade.View):
         self.enemy_list = arcade.SpriteList()
         self.player_bullet_list = arcade.SpriteList()
         self.enemy_bullet_list = arcade.SpriteList()
-        self.shield_list = arcade.SpriteList(is_static=True)
+        self.shield_list = arcade.SpriteList()
 
         # Set up the player
         self.score = 0
@@ -172,16 +182,16 @@ class GameView(arcade.View):
 
         # Render the text
         arcade.draw_text(f"Score: {self.score:04}",
-                         start_x=30,
-                         start_y=SCREEN_HEIGHT - 35,
+                         x=30,
+                         y=SCREEN_HEIGHT - 35,
                          color=arcade.color.WHITE,
                          font_size=24,
                          font_name="Kenney Rocket")
 
         # Render the text
         arcade.draw_text(f"Lives: {self.lives}",
-                         start_x=SCREEN_WIDTH - 300,
-                         start_y=SCREEN_HEIGHT - 35,
+                         x=SCREEN_WIDTH - 300,
+                         y=SCREEN_HEIGHT - 35,
                          color=arcade.color.WHITE,
                          font_size=24,
                          align="right",
@@ -191,8 +201,8 @@ class GameView(arcade.View):
         # Draw game over if the game state is such
         if self.game_state == GAME_OVER:
             arcade.draw_text(text="GAME OVER",
-                             start_x=0,
-                             start_y=SCREEN_HEIGHT / 2 + 20,
+                             x=SCREEN_WIDTH / 2,
+                             y=SCREEN_HEIGHT / 2 + 20,
                              color=arcade.color.RED,
                              font_size=65,
                              width=SCREEN_WIDTH,
@@ -200,8 +210,8 @@ class GameView(arcade.View):
                              font_name="Kenney Rocket")
 
             arcade.draw_text(text="Press Space",
-                             start_x=0,
-                             start_y=SCREEN_HEIGHT / 2 - 35,
+                             x=SCREEN_WIDTH / 2,
+                             y=SCREEN_HEIGHT / 2 - 35,
                              color=arcade.color.RED,
                              font_size=35,
                              width=SCREEN_WIDTH,
@@ -213,10 +223,32 @@ class GameView(arcade.View):
     def on_draw(self):
         """ Render the screen. """
 
+        # The CRT filter renders into a framebuffer fixed at native resolution,
+        # so only enable it when the window is exactly 1200x1000. Otherwise fall
+        # back to direct (scaled) rendering to the window.
+        if self.filter_on and (self.window.width != SCREEN_WIDTH
+                                or self.window.height != SCREEN_HEIGHT):
+            self.filter_on = False
+
+        # Fit-to-screen: match_window resizes the projection to a letterboxed
+        # area keeping the 1200:1000 aspect (true letterbox, no distortion).
+        # It anchors the letterbox at (0, 0), so center it in the window next.
+        window_w, window_h = self.window.width, self.window.height
+        self.camera.match_window(aspect=SCREEN_WIDTH / SCREEN_HEIGHT)
+        vp = self.camera.viewport
+        self.camera.viewport = Viewport((window_w - vp.width) / 2,
+                                        (window_h - vp.height) / 2,
+                                        vp.width,
+                                        vp.height)
+        # The zoom compensates the resized projection so the visible world
+        # stays exactly 0..1200 x 0..1000 at any window size (uniform scale).
+        self.camera.zoom = min(window_w / SCREEN_WIDTH, window_h / SCREEN_HEIGHT)
+
         if self.filter_on:
             # Draw our stuff into the CRT filter
             self.crt_filter.use()
             self.crt_filter.clear()
+            self.camera.use()
             self.draw()
 
             # Switch back to our window and draw the CRT filter do
@@ -229,6 +261,7 @@ class GameView(arcade.View):
             # Draw our stuff into the screen
             self.window.use()
             self.window.clear()
+            self.camera.use()
             self.draw()
 
     def on_mouse_motion(self, x, y, dx, dy):
@@ -238,14 +271,28 @@ class GameView(arcade.View):
         if self.game_state == GAME_OVER:
             return
 
-        self.player_sprite.center_x = x
+        # Convert screen pixels to world coordinates (the camera may be
+        # scaled/shifted, e.g. after a window resize).
+        world = self.camera.unproject((x, y))
 
-        # Keep the player on screen horizontally
-        margin = ENEMY_HORIZONTAL_MARGIN
-        self.player_sprite.center_x = min(max(x, margin), SCREEN_WIDTH - margin)
+        # Keep the whole player sprite on screen horizontally. The margin
+        # must be the sprite half width (16 px texture * 6 scale = 96 px,
+        # half = 48 px), not ENEMY_HORIZONTAL_MARGIN, otherwise half of the
+        # ship hangs off the edge. Derived from the actual sprite width so it
+        # tracks any change to SPRITE_SCALING_PLAYER.
+        margin = self.player_sprite.width / 2
+        self.player_sprite.center_x = min(max(world.x, margin), SCREEN_WIDTH - margin)
 
     def on_mouse_press(self, x, y, button, modifiers):
         """ Called whenever the mouse button is clicked. """
+
+        # Only the left mouse button fires (right/middle do nothing)
+        if button != arcade.MOUSE_BUTTON_LEFT:
+            return
+
+        # Don't let the player fire once the game is over
+        if self.game_state == GAME_OVER:
+            return
 
         if self.death_pause:
             return
@@ -273,14 +320,20 @@ class GameView(arcade.View):
 
     def update_enemies(self):
 
-        # Move the enemy vertically
+        # Move the enemies horizontally
         for enemy in self.enemy_list:
+            # Dead enemies (explosions) stay in place while they fade out.
+            if enemy.dead:
+                continue
             enemy.center_x += self.enemy_change_x
 
         # Check every enemy to see if any hit the edge. If so, reverse the
         # direction and flag to move down.
         move_down = False
         for enemy in self.enemy_list:
+            # A dead enemy close to the edge must not trigger a reversal.
+            if enemy.dead:
+                continue
             if enemy.right > RIGHT_ENEMY_BORDER and self.enemy_change_x > 0:
                 self.enemy_change_x *= -1
                 move_down = True
@@ -294,6 +347,8 @@ class GameView(arcade.View):
         if move_down:
             # Yes
             for enemy in self.enemy_list:
+                if enemy.dead:
+                    continue
                 # Move enemy down
                 enemy.center_y -= ENEMY_MOVE_DOWN_AMOUNT
 
@@ -301,21 +356,29 @@ class GameView(arcade.View):
         """
         See if any enemies will fire this frame.
         """
-        # Track which x values have had a chance to fire a bullet.
-        # Since enemy list is build from the bottom up, we can use
-        # this to only allow the bottom row to fire.
-        x_spawn = []
-        for enemy in self.enemy_list:
+        # The enemy list is built column by column starting from row 0
+        # (y=720 — the top row), so the first live enemy of a column in
+        # list order is the highest one. Bullets should come from the
+        # bottom of the formation, so pick the lowest live enemy per
+        # column: iterate the list backwards (bottom row first) and keep
+        # the first live enemy seen for each x.
+        lowest_by_x = {}
+        for enemy in reversed(self.enemy_list):
             if enemy.dead:
                 continue
+            key = round(enemy.center_x, 1)
+            if key not in lowest_by_x:
+                lowest_by_x[key] = enemy
 
-            # Adjust the chance depending on the number of enemies. Fewer
-            # enemies, more likely to fire.
-            chance = 3 + len(self.enemy_list)
+        # Adjust the chance depending on the number of live enemies.
+        # Fewer enemies, more likely to fire. Dead enemies stay in the
+        # list for 0.5 s, so counting the list would be wrong.
+        chance = 3 + sum(1 for enemy in self.enemy_list if not enemy.dead)
 
-            # Fire if we roll a zero, and no one else in this column has had
-            # a chance to fire.
-            if random.randrange(chance) == 0 and enemy.center_x not in x_spawn:
+        # Fire if we roll a zero; each column gets at most one chance
+        # this frame (lowest_by_x holds exactly one enemy per column).
+        for enemy in lowest_by_x.values():
+            if random.randrange(chance) == 0:
                 # Create a bullet
                 bullet = EnemyBullet()
 
@@ -328,10 +391,6 @@ class GameView(arcade.View):
 
                 # Add the bullet to the appropriate list
                 self.enemy_bullet_list.append(bullet)
-
-            # Ok, this column has had a chance to fire. Add to list so we don't
-            # try it again this frame.
-            x_spawn.append(enemy.center_x)
 
     def process_enemy_bullets(self):
 
@@ -361,6 +420,9 @@ class GameView(arcade.View):
                 else:
                     self.game_state = GAME_OVER
                     arcade.play_sound(self.game_over)
+                # clear() replaces the list the loop iterates over;
+                # exit so remaining bullets aren't processed again this frame
+                break
 
             # If the bullet falls off the screen get rid of it
             if bullet.top < 0:
@@ -386,7 +448,9 @@ class GameView(arcade.View):
             # Check this bullet to see if it hit a enemy
             hit_list = arcade.check_for_collision_with_list(bullet, self.enemy_list)
 
-            # For every enemy we hit, add to the score and remove the enemy
+            # A bullet kills only the first enemy it hits (original
+            # behavior). Dead enemies (explosions) are skipped, and the
+            # loop exits right after the first live kill.
             for enemy in hit_list:
                 if enemy.dead:
                     continue
@@ -397,6 +461,9 @@ class GameView(arcade.View):
 
                 # Hit Sound
                 arcade.play_sound(self.hit_sound)
+
+                # One bullet = one kill; don't score the rest of hit_list.
+                break
 
             # If the bullet flies off-screen, remove it.
             if bullet.bottom > SCREEN_HEIGHT:
@@ -411,7 +478,6 @@ class GameView(arcade.View):
                 self.death_pause = 0
             return
 
-        self.enemy_bullet_list.update(delta_time)
         self.enemy_list.update(delta_time)
 
         if self.game_state == GAME_OVER:
