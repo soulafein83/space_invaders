@@ -14,8 +14,8 @@ class EnemyInvader(arcade.Sprite):
 
         self.texture = self.texture_1
 
-    def on_update(self, dt):
-        self.time += dt
+    def update(self, delta_time):
+        self.time += delta_time
         if self.dead:
             if self.time >= 0.5:
                 self.remove_from_sprite_lists()

@@ -35,19 +35,23 @@ class GameView(arcade.View):
         self.lives = 3
         self.death_pause = 0
 
-        self.filter_on = True
+        self.filter_on = False
 
         # Enemy movement
         self.enemy_change_x = -ENEMY_SPEED
 
-        # Create the crt filter
-        self.crt_filter = arcade.experimental.CRTFilter(SCREEN_WIDTH, SCREEN_HEIGHT,
-                                                        resolution_down_scale=5.0,
-                                                        hard_scan=-8.0,
-                                                        hard_pix=-3.0,
-                                                        display_warp= Vec2(1.0 / 32.0, 1.0 / 24.0),
-                                                        mask_dark=0.5,
-                                                        mask_light=1.5)
+        # Create the crt filter (optional; fall back to no filter on any error)
+        try:
+            self.crt_filter = arcade.experimental.CRTFilter(SCREEN_WIDTH, SCREEN_HEIGHT,
+                                                            resolution_down_scale=5.0,
+                                                            hard_scan=-8.0,
+                                                            hard_pix=-3.0,
+                                                            display_warp= Vec2(1.0 / 32.0, 1.0 / 24.0),
+                                                            mask_dark=0.5,
+                                                            mask_light=1.5)
+            self.filter_on = True
+        except Exception:
+            self.crt_filter = None
 
         # Don't show the mouse cursor
         self.window.set_mouse_visible(False)
@@ -76,7 +80,6 @@ class GameView(arcade.View):
             x = x_start + x_spacing * column
             for row in range(row_count):
                 y = y_start + y_spacing * row
-                score = 0
 
                 if row == 0 or row == 1:
                     texture1 = arcade.load_texture("images/sprite_05.png")
@@ -95,7 +98,7 @@ class GameView(arcade.View):
                 # enemy image from kenney.nl
                 enemy = EnemyInvader(texture1, texture2)
                 enemy.score = score
-                enemy.scale = SPRITE_SCALING_enemy
+                enemy.scale = SPRITE_SCALING_ENEMY
 
                 # Position the enemy
                 enemy.center_x = x
@@ -237,6 +240,10 @@ class GameView(arcade.View):
 
         self.player_sprite.center_x = x
 
+        # Keep the player on screen horizontally
+        margin = ENEMY_HORIZONTAL_MARGIN
+        self.player_sprite.center_x = min(max(x, margin), SCREEN_WIDTH - margin)
+
     def on_mouse_press(self, x, y, button, modifiers):
         """ Called whenever the mouse button is clicked. """
 
@@ -277,9 +284,11 @@ class GameView(arcade.View):
             if enemy.right > RIGHT_ENEMY_BORDER and self.enemy_change_x > 0:
                 self.enemy_change_x *= -1
                 move_down = True
+                break
             if enemy.left < LEFT_ENEMY_BORDER and self.enemy_change_x < 0:
                 self.enemy_change_x *= -1
                 move_down = True
+                break
 
         # Did we hit the edge above, and need to move the enemy down?
         if move_down:
@@ -302,7 +311,7 @@ class GameView(arcade.View):
 
             # Adjust the chance depending on the number of enemies. Fewer
             # enemies, more likely to fire.
-            chance = 3 + len(self.enemy_list) * 20
+            chance = 3 + len(self.enemy_list)
 
             # Fire if we roll a zero, and no one else in this column has had
             # a chance to fire.
@@ -342,12 +351,12 @@ class GameView(arcade.View):
                 continue
 
             # See if the player got hit with a bullet
-            if arcade.check_for_collision_with_list(self.player_sprite, self.enemy_bullet_list):
+            if arcade.check_for_collision(self.player_sprite, bullet):
                 if self.lives > 0:
                     arcade.play_sound(self.player_explosion)
                     self.lives -= 1
-                    self.enemy_bullet_list = arcade.SpriteList()
-                    self.player_bullet_list = arcade.SpriteList()
+                    self.enemy_bullet_list.clear()
+                    self.player_bullet_list.clear()
                     self.death_pause = DEATH_PAUSE_TIME
                 else:
                     self.game_state = GAME_OVER
@@ -402,8 +411,8 @@ class GameView(arcade.View):
                 self.death_pause = 0
             return
 
-        self.enemy_bullet_list.on_update(delta_time)
-        self.enemy_list.on_update(delta_time)
+        self.enemy_bullet_list.update(delta_time)
+        self.enemy_list.update(delta_time)
 
         if self.game_state == GAME_OVER:
             return
