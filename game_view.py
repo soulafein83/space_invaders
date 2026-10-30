@@ -4,6 +4,7 @@ from pyglet.math import Vec2
 from arcade.camera import Camera2D
 from arcade.types import Viewport
 
+import highscore
 from enemy_bullet import EnemyBullet
 from constants import *
 from enemy_invader import EnemyInvader
@@ -167,6 +168,16 @@ class GameView(arcade.View):
         self.level_pause = 0
         self.enemy_bullet_speed = BULLET_SPEED
 
+        # High score is loaded once from disk; a new record is saved only
+        # when the game ends (do_game_over).
+        self.high_score = highscore.load_high_score()
+        self.new_record = False
+
+        # Pause and held keyboard keys (arrows), reset every run.
+        self.paused = False
+        self.key_left = False
+        self.key_right = False
+
         # Image from kenney.nl
         self.player_sprite = arcade.Sprite("images/player.png",
                                            SPRITE_SCALING_PLAYER)
@@ -181,6 +192,15 @@ class GameView(arcade.View):
 
         self.setup_level()
 
+    def do_game_over(self):
+        """ End the game and persist a new high score if the score beats it. """
+        self.game_state = GAME_OVER
+        arcade.play_sound(self.game_over)
+        if self.score > self.high_score:
+            self.high_score = self.score
+            self.new_record = True
+            highscore.save_high_score(self.score)
+
     def draw(self):
         # Draw all the sprites.
         self.enemy_list.draw(pixelated=True)
@@ -193,6 +213,14 @@ class GameView(arcade.View):
         arcade.draw_text(f"Score: {self.score:04}",
                          x=30,
                          y=SCREEN_HEIGHT - 35,
+                         color=arcade.color.WHITE,
+                         font_size=24,
+                         font_name="Kenney Rocket")
+
+        # Persistent high score (loaded in setup, saved in do_game_over)
+        arcade.draw_text(f"High: {self.high_score:04}",
+                         x=30,
+                         y=SCREEN_HEIGHT - 65,
                          color=arcade.color.WHITE,
                          font_size=24,
                          font_name="Kenney Rocket")
@@ -243,7 +271,28 @@ class GameView(arcade.View):
                              anchor_x="center",
                              font_name="Kenney Rocket")
 
+            # The record banner appears only on the game-over screen, right
+            # below "Press Space".
+            if self.new_record:
+                arcade.draw_text(text="NEW RECORD!",
+                                 x=SCREEN_WIDTH / 2,
+                                 y=SCREEN_HEIGHT / 2 - 85,
+                                 color=arcade.color.WHITE,
+                                 font_size=35,
+                                 anchor_x="center",
+                                 font_name="Kenney Rocket")
+
             self.window.set_mouse_visible(True)
+
+        # Draw the pause banner while the game is paused
+        if self.paused:
+            arcade.draw_text(text="PAUSED",
+                             x=SCREEN_WIDTH / 2,
+                             y=SCREEN_HEIGHT / 2 + 20,
+                             color=arcade.color.WHITE,
+                             font_size=50,
+                             anchor_x="center",
+                             font_name="Kenney Rocket")
 
     def on_draw(self):
         """ Render the screen. """
@@ -292,8 +341,9 @@ class GameView(arcade.View):
     def on_mouse_motion(self, x, y, dx, dy):
         """ Called whenever the mouse moves. """
 
-        # Don't move the player if the game is over or a level is clearing
-        if self.game_state == GAME_OVER or self.level_pause > 0:
+        # Don't move the player if the game is over, a level is clearing
+        # or the game is paused
+        if self.game_state == GAME_OVER or self.level_pause > 0 or self.paused:
             return
 
         # Convert screen pixels to world coordinates (the camera may be
@@ -315,8 +365,14 @@ class GameView(arcade.View):
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
-        # Don't let the player fire once the game is over or a level is clearing
-        if self.game_state == GAME_OVER or self.level_pause > 0:
+        self.shoot()
+
+    def shoot(self):
+        """ Fire one player bullet (mouse click or Space/X). """
+
+        # Don't let the player fire once the game is over, a level is
+        # clearing or the game is paused
+        if self.game_state == GAME_OVER or self.level_pause > 0 or self.paused:
             return
 
         if self.death_pause:
@@ -342,6 +398,21 @@ class GameView(arcade.View):
 
             # Add the bullet to the appropriate lists
             self.player_bullet_list.append(bullet)
+
+    def move_player_keyboard(self):
+        """ Constant-speed movement while an arrow key is held down. """
+        if not (self.key_left or self.key_right):
+            return
+
+        direction = (1 if self.key_right else 0) - (1 if self.key_left else 0)
+        if direction == 0:
+            return
+
+        # Same half-width clamp as the mouse control (see on_mouse_motion).
+        margin = self.player_sprite.width / 2
+        self.player_sprite.center_x = min(
+            max(self.player_sprite.center_x + direction * PLAYER_KEYBOARD_SPEED, margin),
+            SCREEN_WIDTH - margin)
 
     def update_enemies(self):
 
@@ -383,8 +454,7 @@ class GameView(arcade.View):
             if enemy.dead:
                 continue
             if enemy.bottom <= ENEMY_BOTTOM_LIMIT:
-                self.game_state = GAME_OVER
-                arcade.play_sound(self.game_over)
+                self.do_game_over()
                 return
 
     def allow_enemies_to_fire(self):
@@ -462,8 +532,7 @@ class GameView(arcade.View):
                     self.player_bullet_list.clear()
                     self.death_pause = DEATH_PAUSE_TIME
                 else:
-                    self.game_state = GAME_OVER
-                    arcade.play_sound(self.game_over)
+                    self.do_game_over()
                 # clear() replaces the list the loop iterates over;
                 # exit so remaining bullets aren't processed again this frame
                 break
@@ -516,6 +585,10 @@ class GameView(arcade.View):
     def on_update(self, delta_time):
         """ Movement and game logic """
 
+        # Pause freezes everything, including the death-pause countdown.
+        if self.paused:
+            return
+
         if self.death_pause > 0:
             self.death_pause -= delta_time
             if self.death_pause < 0:
@@ -537,6 +610,7 @@ class GameView(arcade.View):
                 self.setup_level()
             return
 
+        self.move_player_keyboard()
         self.update_enemies()
         self.allow_enemies_to_fire()
         self.process_enemy_bullets()
@@ -549,6 +623,37 @@ class GameView(arcade.View):
             self.level_pause = LEVEL_CLEAR_TIME
 
     def on_key_press(self, symbol: int, modifiers: int):
-        if self.game_state == GAME_OVER and symbol == arcade.key.SPACE:
-            my_game_view = instruction_view.InstructionView()
-            self.window.show_view(my_game_view)
+        # Space after game over goes to the start screen (a fresh GameView
+        # is created on click); no other key acts in that state.
+        if self.game_state == GAME_OVER:
+            if symbol == arcade.key.SPACE:
+                my_game_view = instruction_view.InstructionView()
+                self.window.show_view(my_game_view)
+            return
+
+        # Movement and firing are frozen while the level banner is up.
+        if self.level_pause > 0:
+            return
+
+        # P pauses/unpauses; it still works while paused (that's the point).
+        if symbol == arcade.key.P:
+            self.paused = not self.paused
+            return
+
+        if self.paused:
+            return
+
+        if symbol == arcade.key.LEFT:
+            self.key_left = True
+        elif symbol == arcade.key.RIGHT:
+            self.key_right = True
+        elif symbol in (arcade.key.SPACE, arcade.key.X):
+            self.shoot()
+
+    def on_key_release(self, symbol: int, modifiers: int):
+        # Clearing the held-key flags stops the keyboard movement in
+        # move_player_keyboard.
+        if symbol == arcade.key.LEFT:
+            self.key_left = False
+        elif symbol == arcade.key.RIGHT:
+            self.key_right = False

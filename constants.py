@@ -10,6 +10,9 @@ PLAYER_BULLET_SPEED = 8
 BULLET_SPEED = 4
 ENEMY_SPEED = 1.5
 
+# Keyboard movement: pixels per frame while an arrow key is held down.
+PLAYER_KEYBOARD_SPEED = 8
+
 MAX_PLAYER_BULLETS = 3
 MAX_ENEMY_BULLETS = 5
 

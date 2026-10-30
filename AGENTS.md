@@ -15,6 +15,7 @@ Space Invaders clone: Python + Arcade (dep: `arcade>=3,<4`, developed against ar
 - `instruction_view.py` — start screen; left-click creates `GameView` and calls `setup()`.
 - `constants.py` — every tunable (sprite scale ×6, speeds, screen size, `GAME_OVER`/`PLAY_GAME`).
 - `enemy_invader.py`, `enemy_bullet.py` — sprite subclasses with 2-frame animation.
+- `highscore.py` — JSON high score saved next to the code (`highscore.json`, gitignored); `load_high_score()` returns 0 on missing/invalid file.
 - `images/` — Kenney sprites; sounds come from arcade's bundled `:resources:sounds/...` paths.
 - `error.md` — the authoritative log of every verified arcade 3.3.3 gotcha listed below; `plan.md` — the fix plan (all items done as of 2026-10-30).
 
@@ -34,3 +35,5 @@ Space Invaders clone: Python + Arcade (dep: `arcade>=3,<4`, developed against ar
 - The formation is built column by column from the top row (row 0 = y=720; scores 10→20→30 top to bottom). Firing picks the *lowest* live enemy per column — the list is iterated backwards for that reason.
 - One bullet = one kill (`break` after the first live hit), and `break` after the player-hit `clear()` — otherwise multiple lives are lost in one frame.
 - Replays go through `GameView.setup()`, which rebuilds all sprite lists. Flow: game over → Space → `InstructionView` → click → fresh `GameView().setup()`.
+- Pause (P) is checked at the top of `on_update` and must stay there, ahead of the death-pause countdown. Every player input path (mouse motion, `shoot()`, keyboard movement) must also check `self.paused`; P itself must still work while paused.
+- Space is dual-purpose by design: GAME_OVER → restart (to `InstructionView`); during play → fire. The GAME_OVER branch in `on_key_press` must `return` before any play handling.
