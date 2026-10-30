@@ -368,27 +368,33 @@ class GameView(arcade.View):
             if key not in lowest_by_x:
                 lowest_by_x[key] = enemy
 
+        # No firing if nobody is alive or the limited enemy bullet pool
+        # (classic arcade: only a few enemy bullets on screen at once).
+        if not lowest_by_x or len(self.enemy_bullet_list) >= MAX_ENEMY_BULLETS:
+            return
+
         # Adjust the chance depending on the number of live enemies.
         # Fewer enemies, more likely to fire. Dead enemies stay in the
         # list for 0.5 s, so counting the list would be wrong.
-        chance = 3 + sum(1 for enemy in self.enemy_list if not enemy.dead)
+        chance = 30 + sum(1 for enemy in self.enemy_list if not enemy.dead)
 
-        # Fire if we roll a zero; each column gets at most one chance
-        # this frame (lowest_by_x holds exactly one enemy per column).
-        for enemy in lowest_by_x.values():
-            if random.randrange(chance) == 0:
-                # Create a bullet
-                bullet = EnemyBullet()
+        # One global roll per frame; on a hit, a random column fires
+        # (lowest_by_x holds exactly the lowest live enemy per column).
+        if random.randrange(chance) == 0:
+            enemy = random.choice(list(lowest_by_x.values()))
 
-                # Give the bullet a speed
-                bullet.change_y = -BULLET_SPEED
+            # Create a bullet
+            bullet = EnemyBullet()
 
-                # Position the bullet so its top id right below the enemy
-                bullet.center_x = enemy.center_x
-                bullet.top = enemy.bottom
+            # Give the bullet a speed
+            bullet.change_y = -BULLET_SPEED
 
-                # Add the bullet to the appropriate list
-                self.enemy_bullet_list.append(bullet)
+            # Position the bullet so its top id right below the enemy
+            bullet.center_x = enemy.center_x
+            bullet.top = enemy.bottom
+
+            # Add the bullet to the appropriate list
+            self.enemy_bullet_list.append(bullet)
 
     def process_enemy_bullets(self):
 
