@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Space Invaders clone: Python + Arcade (dep: `arcade>=3,<4`, developed against arcade 3.3.3). Flat layout, single windowed game — no packages, no tests, no CI. Project docs (`error.md`, `plan.md`) are written in Polish.
+Space Invaders clone: Python + Arcade (dep: `arcade>=3,<4`, developed against arcade 3.3.3). Flat layout, single windowed game — no packages, no tests, no CI. Project docs (`error.md`, `plan.md`) are written in Polish. Do not read `plan.md` or `error.md` proactively — their key points are already summarized here; open them only when a new, unexplained error occurs.
 
 ## Running
 
