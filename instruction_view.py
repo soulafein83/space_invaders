@@ -18,6 +18,8 @@ class InstructionView(arcade.View):
                          arcade.color.WHITE, font_size=50, anchor_x="center")
         arcade.draw_text("Click to Start", self.window.width / 2, self.window.height / 2-75,
                          arcade.color.WHITE, font_size=20, anchor_x="center")
+        arcade.draw_text("or Press Space", self.window.width / 2, self.window.height / 2 - 95,
+                         arcade.color.WHITE, font_size=20, anchor_x="center")
         arcade.draw_text(f"High Score: {self.high_score:04}", self.window.width / 2,
                          self.window.height / 2 + 60,
                          arcade.color.WHITE, font_size=20, anchor_x="center")
@@ -28,6 +30,14 @@ class InstructionView(arcade.View):
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
+        self.start_game()
+
+    def on_key_press(self, symbol: int, modifiers: int):
+        """ Space starts the game, just like a click. """
+        if symbol == arcade.key.SPACE:
+            self.start_game()
+
+    def start_game(self):
         my_game_view = game_view.GameView()
         my_game_view.setup()
         self.window.show_view(my_game_view)
