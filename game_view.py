@@ -205,8 +205,7 @@ class GameView(arcade.View):
                              y=SCREEN_HEIGHT / 2 + 20,
                              color=arcade.color.RED,
                              font_size=65,
-                             width=SCREEN_WIDTH,
-                             align="center",
+                             anchor_x="center",
                              font_name="Kenney Rocket")
 
             arcade.draw_text(text="Press Space",
@@ -214,8 +213,7 @@ class GameView(arcade.View):
                              y=SCREEN_HEIGHT / 2 - 35,
                              color=arcade.color.RED,
                              font_size=35,
-                             width=SCREEN_WIDTH,
-                             align="center",
+                             anchor_x="center",
                              font_name="Kenney Rocket")
 
             self.window.set_mouse_visible(True)
