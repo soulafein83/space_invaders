@@ -30,7 +30,7 @@ masz starszą wersję, część zmian jest bezpieczna do pominięcia.
 
 ## 🐛 Błędy krytyczne (gra się wali / nie działa na nowym arcade)
 
-### 1. Usunięta metoda `on_update()` w arcade 3.x
+### 1. Usunięta metoda `on_update()` w arcade 3.x  ✅ NAPRAWIONE
 **Pliki / linie:**
 - `game_view.py` – linie 405-406
 - `enemy_bullet.py` – linia 16 (`def on_update(self, dt):`)
@@ -42,24 +42,14 @@ rzuci `AttributeError` w każdej klatce → crash gry. Co więcej, lista wywołu
 `sprite.update(delta_time)`, więc metody animacji zapisane w `on_update()`
 przez cały czas nie są wywoływane (nie zmieniają tekstur kul/explosji).
 
-**Poprawka:**
+**Poprawka (zastosowana):**
 ```python
 # game_view.py, on_update()
-# BŁADNO:
-self.enemy_bullet_list.on_update(delta_time)
-self.enemy_list.on_update(delta_time)
-# POPRAWNIE:
-self.enemy_bullet_list.update(delta_time)
-self.enemy_list.update(delta_time)
-```
-```python
-# enemy_bullet.py
-# def on_update(self, dt):   ->
-def update(self, delta_time):
+self.enemy_bullet_list.update(delta_time)   # było .on_update(delta_time)
+self.enemy_list.update(delta_time)          # było .on_update(delta_time)
 
-# enemy_invader.py
-# def on_update(self, dt):   ->
-def update(self, delta_time):
+# enemy_bullet.py / enemy_invader.py
+def update(self, delta_time):               # było def on_update(self, dt):
 ```
 Zmień też nazwę parametru wewnątrz na `delta_time` (dla jasności; stara
 nazwa `dt` też przeżyje, ale lepiej jednolicie).
@@ -68,7 +58,7 @@ nazwa `dt` też przeżyje, ale lepiej jednolicie).
 
 ## 🐛 Błędy logiczne (zła mechanika gry)
 
-### 2. Trafienie gracza – sprawdzana CAŁA lista kul, nie tylko aktualnej
+### 2. Trafienie gracza – sprawdzana CAŁA lista kul, nie tylko aktualnej  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linie 344-355 (`process_enemy_bullets`)
 
 **Problem:**
@@ -87,7 +77,7 @@ if arcade.check_for_collision(self.player_sprite, bullet):
 (usunąć powiązaną z nim cało-listę i powrót do pętli przez `continue`
 właśnie po tej linii jest OK).
 
-### 3. Podwójne odbicie kierunku wrogów (przejście przez ścianę)
+### 3. Podwójne odbicie kierunku wrogów (przejście przez ścianę)  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linie 275-282 (`update_enemies`)
 
 **Problem:** Jeśli w tej samej klatce dwie (lub więcej) wrogów przekroczy
@@ -109,7 +99,7 @@ for enemy in self.enemy_list:
         break
 ```
 
-### 4. Wrogowie strzelają prawie nigdy (bilans)
+### 4. Wrogowie strzelają prawie nigdy (bilans)  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linie 303-309 (`allow_enemies_to_fire`)
 
 **Problem:** `chance = 3 + len(self.enemy_list) * 20`. Przy pełnej flocie
@@ -138,7 +128,7 @@ if lowest is not None and not lowest.dead:
 
 ## ⚠️ Kwestie jakości / zgodności
 
-### 5. Nazewnictwo w `constants.py` (naruszenie PEP8 / mylące)
+### 5. Nazewnictwo w `constants.py` (naruszenie PEP8 / mylące)  ✅ NAPRAWIONE
 **Plik:** `constants.py`
 - linia 2: `SPRITE_SCALING_enemy = 6` → wielka litera `E` w środku nazwy
   (mieszane wielkie/małe). Poprawnie: `SPRITE_SCALING_ENEMY`.
@@ -146,7 +136,7 @@ if lowest is not None and not lowest.dead:
   lewej/prawej krawędzi (czyli **pozioma**), a nazywa się „VERTICAL”.
   Poprawnie: `ENEMY_HORIZONTAL_MARGIN`.
 
-### 6. `requirements.txt` nie ma przypisanej wersji
+### 6. `requirements.txt` nie ma przypisanej wersji  ✅ NAPRAWIONE
 **Plik:** `requirements.txt` (jedyna linia: `arcade`)
 
 **Problem:** bez przypisanej wersji `pip` instaluje najnowší arcade 3.x,
@@ -158,7 +148,7 @@ arcade>=3,<4
 ```
 (albo włącz `pyproject.toml`/`setup.py` z zależnościami – obecnie ich brak).
 
-### 7. Gracz może wyjechać poza ekran w bok
+### 7. Gracz może wyjechać poza ekran w bok  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linia 238 (`on_mouse_motion`)
 
 **Problem:** `self.player_sprite.center_x = x` bez ograniczeń → statek
@@ -170,7 +160,7 @@ margin = ENEMY_VERTICAL_MARGIN
 self.player_sprite.center_x = min(max(x, margin), SCREEN_WIDTH - margin)
 ```
 
-### 8. Zmiana listy w trakcie iteracji
+### 8. Zmiana listy w trakcie iteracji  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linie 349-350 (`process_enemy_bullets`)
 
 **Problem:** wewnątrz pętli `for bullet in self.enemy_bullet_list:`
@@ -183,25 +173,25 @@ przypasanie poza pętlą lub użyj `.clear()`.
 
 ## 💡 Ulepszenia / sugestie (opcjonalne)
 
-### 9. Martwy kod w `setup_level_one`
+### 9. Martwy kod w `setup_level_one`  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linia 79
 `score = 0` jest przypisane, a natychmiast nadpisane przez
 `enemy.score = score`. Do usunięcia.
 
-### 10. `InstructionView.on_show` vs `on_show_view`
+### 10. `InstructionView.on_show` vs `on_show_view`  ✅ NAPRAWIONE
 **Plik / linie:** `instruction_view.py` – linie 9-15
 W arcade 3.x event „pokaż widok” obsługuje się przez `on_show_view()`.
 `on_show` odpala się tylko raz przy pierwszym pokazaniu okna. Dla pewności
 przenies metodę ustawiania tła/viewport do `on_show_view()`.
 
-### 11. Filtr CRT jako potencjalne źródło problemów z wersjami
+### 11. Filtr CRT jako potencjalne źródło problemów z wersjami  ✅ NAPRAWIONE
 **Plik / linie:** `game_view.py` – linie 44-50 (`arcade.experimental.CRTFilter`)
 Filtr jest w module `experimental` i jego API może się różnić między
 wersjami arcade. Jeśli celem jest stabilność, warto opakować to w
 `try/except` i domyślnie trzymać `self.filter_on = False`, albo dodać
 zależność w `requirements.txt`.
 
-### 12. Brak `README` z instrukcją uruchomienia (opcja)
+### 12. Brak `README` z instrukcją uruchomienia (opcja)  ✅ NAPRAWIONE
 Aktualne `readme.rst` zawiera tylko opis. Dobrze by było dodać krótką
 instrukcję: `pip install arcade` → `python main.py`.
 
@@ -209,9 +199,14 @@ instrukcję: `pip install arcade` → `python main.py`.
 
 ## Podsumowanie – co naprawić w pierwszej kolejności
 
+Wszystkie punkty (1–12) są teraz **naprawione i wypuszczone na forka**.
+Kolejność miała znaczenie tylko przy wyborze co naprawić w pierwszej
+kolejności:
+
 1. **Punkt 1** (`on_update` → `update`) – bez tego gra nie uruchomi się na
    aktualnym arcade. Najważniejsze.
 2. **Punkt 2** (trafienie gracza) – poważnie łamie rozgrywkę.
-3. **Punkt 3** (odbicie wrogów) – klasyczny bug „przejścia przez ścianę”.
+3. **Punkt 3** (odbicie wrogów) – klasyczny bug „przejścia przez ścianę".
 4. **Punkt 6** (pin versions) – zapobiega problemom z zgodnością.
 5. Punkt 4, 5, 7, 8 – poprawa balansu i jakości kodu.
+6. Punkt 9–12 – opcjonalne ulepszenia (już zrobione).
