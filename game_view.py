@@ -223,10 +223,10 @@ class GameView(arcade.View):
 
         # The CRT filter renders into a framebuffer fixed at native resolution,
         # so only enable it when the window is exactly 1200x1000. Otherwise fall
-        # back to direct (scaled) rendering to the window.
-        if self.filter_on and (self.window.width != SCREEN_WIDTH
-                                or self.window.height != SCREEN_HEIGHT):
-            self.filter_on = False
+        # back to direct (scaled) rendering to the window. Check both ways so
+        # the filter comes back when the window is resized to 1200x1000 again.
+        self.filter_on = (self.window.width == SCREEN_WIDTH
+                          and self.window.height == SCREEN_HEIGHT)
 
         # Fit-to-screen: match_window resizes the projection to a letterboxed
         # area keeping the 1200:1000 aspect (true letterbox, no distortion).
